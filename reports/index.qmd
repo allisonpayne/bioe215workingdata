@@ -1,0 +1,117 @@
+Lesson 3 Homework
+
+```{r}
+library(tidyverse)
+bor_nestlings <- read_csv(here::here("data/73_species.csv"))
+bor_traits <- read_csv(here::here("data/Traits_73_species.csv"))
+avonet <- readxl::read_excel(here::here("data/AVONET Supplementary dataset 1.xlsx"), sheet = "AVONET1_BirdLife")
+```
+
+```{r}
+all_birds_trend <- bor_nestlings %>% 
+  group_by(Year) %>% 
+  summarize(mean_doy = mean(Dayofyear))
+
+ggplot(all_birds_trend, aes(Year, mean_doy)) + 
+  geom_point() +
+  geom_smooth(method = "lm")
+
+species_trends <- bor_nestlings %>% 
+  group_by(Year, Species) %>% 
+  summarize(mean_doy = mean(Dayofyear),
+            .groups = "drop")
+
+ggplot(species_trends, aes(Year, mean_doy, color = Species)) + 
+  geom_point() +
+  geom_smooth(method = "lm") 
+
+data_richness <- bor_nestlings %>% 
+  count(Species)
+
+most_rich <- data_richness %>% 
+  arrange(desc(n)) %>% 
+  slice(1:5)
+
+most_rich_trends <- bor_nestlings %>% 
+  filter(Species %in% most_rich$Species) %>% 
+  group_by(Species, Year) %>% 
+  summarize(mean_doy = mean(Dayofyear), 
+            .groups = "drop")
+
+ggplot(most_rich_trends, aes(Year, mean_doy, color = Species)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+# I'm giving you a *function* to help here. You'll learn more about those next week.
+
+# Finds the slope of the relationship between y and x
+trend <- function(x, y) {
+  xy_lm <- lm(y ~ x)
+  coef(xy_lm)[2]
+}
+
+# Calculate the trend for all species
+bor_trends <- species_trends %>% 
+  group_by(Species) %>% 
+  summarize(doy_trend = trend(Year, mean_doy))
+
+soi <- c("ARDCIN", "LARMIN")
+species_trends %>% 
+  filter(Species %in% soi) %>% 
+  ggplot(aes(Year, mean_doy, color = Species)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+```
+
+Assessment
+
+```{r}
+nrow_bor_trends <- nrow(bor_trends) # Use this later
+bor_extreme <- bor_trends %>% 
+  # Sort by the day of year trend
+  arrange(desc(doy_trend)) %>% 
+  # Keep just the first (most negative trend) and last (most positive trend) rows
+  slice(c(1, nrow_bor_trends))
+
+# Now plot them
+species_trends %>% 
+  filter(Species %in% bor_extreme$Species) %>% 
+  ggplot(aes(Year, mean_doy, color = Species)) + 
+    geom_point() +
+    geom_smooth(method = "lm") + 
+  theme_classic()
+```
+
+Bring in more data
+
+```{r}
+# First, select and rename important columns
+avonet_size <- select(avonet, SciName = Species1, Mass_g = Mass)
+bor_sciname <- select(bor_traits, 
+                      Species = Abbreviation, 
+                      SciName = `Scientific name`)
+
+bor_trends_size <- bor_trends %>% 
+  left_join(bor_sciname, by = "Species") %>% 
+  left_join(avonet_size, by = "SciName") %>% 
+  mutate(abs_trend = abs(doy_trend))
+
+# Plot it
+ggplot(bor_trends_size, aes(Mass_g, abs_trend)) +
+  geom_point() +
+  geom_smooth(method = "lm") + 
+  theme_classic()
+
+bor_trends_size2 <- bor_trends_size %>% 
+  drop_na(Mass_g) %>% 
+  filter(Mass_g > 2000, 
+         doy_trend < abs(1))
+  
+ggplot(bor_trends_size2, aes(Mass_g, abs_trend)) +
+  geom_point() +
+  geom_smooth(method = "lm") + 
+  theme_classic()
+```
+
+Our hypothesis is supported - smaller birds have a higher absolute value for the trend, indicating more flexibility in phenology.
